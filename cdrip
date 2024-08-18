@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# Check if ffmpeg and cdparanoia are installed
+if ! command -v ffmpeg &> /dev/null || ! command -v cdparanoia &> /dev/null
+then
+    echo "ffmpeg and cdparanoia are required. Install them first."
+    exit 1
+fi
+
+# Define destination folder
+DEST_DIR=~/Music/$1
+
+# Create destination folder if it doesn't exist
+mkdir -p "$DEST_DIR"
+
+# Rip CD tracks using cdparanoia
+echo "Ripping tracks from CD..."
+cdparanoia -B
+
+# Process each WAV file to convert it to MP3
+for file in *.wav; do
+    if [[ -f "$file" ]]; then
+        # Extract the track number from the filename
+        track=$(echo "$file" | sed -E 's/.*track([0-9]+).*/\1/')
+        
+        # Define output file
+        output="$DEST_DIR/track_$track.mp3"
+        
+        # Convert to MP3
+        echo "Converting $file to MP3..."
+        ffmpeg -i "$file" -q:a 0 "$output"
+        
+        # Remove the WAV file after conversion
+        rm "$file"
+    fi
+done
+
+echo "Audio extraction complete. Files saved to $DEST_DIR."
