@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash 
 
 # Prompt the user for event details
 read -p "Enter the name of the event: " EVENT_NAME
