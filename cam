@@ -1,0 +1,66 @@
+#!/bin/bash
+
+# Prompt the user for event details
+read -p "Enter the name of the event: " EVENT_NAME
+read -p "Enter a brief description: " EVENT_DESCRIPTION
+read -p "Enter the date of the event (e.g., YYYY-MM-DD): " EVENT_DATE
+
+# Check if the user provided a file path as an argument
+if [ $# -eq 1 ]; then
+    IMAGE_PATH="$1"
+    echo "Using user-specified image: $IMAGE_PATH"
+else
+    IMAGE_PATH="$HOME/pcc.jpg"
+    echo "No image specified. Defaulting to $IMAGE_PATH"
+fi
+
+# Check if the image file exists
+if [ ! -f "$IMAGE_PATH" ]; then
+    echo "Error: File $IMAGE_PATH does not exist. Exiting."
+    exit 1
+fi
+
+RESIZED_IMAGE_PATH="/tmp/pcc_resized.jpg"
+
+# Convert the image to 1024x768 using ImageMagick (skew instead of crop)
+echo "Resizing image $IMAGE_PATH to 1024x768 (skewing)..."
+convert "$IMAGE_PATH" -resize 1024x768! "$RESIZED_IMAGE_PATH"
+
+# Load the v4l2loopback module if not already loaded
+if ! lsmod | grep -q v4l2loopback; then
+    echo "Loading v4l2loopback kernel module..."
+    sudo modprobe v4l2loopback devices=1 video_nr=10 card_label="Phantom Webcam" exclusive_caps=1
+    if [ $? -ne 0 ]; then
+        echo "Failed to load v4l2loopback. Exiting."
+        exit 1
+    fi
+fi
+
+# Start streaming the resized image to the virtual webcam, overlaying the text
+echo "Starting virtual webcam with resized image $RESIZED_IMAGE_PATH and text overlay..."
+
+ffmpeg -loop 1 -re -i "$RESIZED_IMAGE_PATH" \
+-vf "drawtext=text='$EVENT_NAME':fontcolor=white:fontsize=45:x=(w-text_w)/2:y=(h-text_h)/2-30, \
+drawtext=text='$EVENT_DESCRIPTION':fontcolor=white:fontsize=30:x=(w-text_w)/2:y=(h-text_h)/2, \
+drawtext=text='$EVENT_DATE':fontcolor=white:fontsize=50:x=(w-text_w)/2:y=(h-text_h)/2+30" \
+-pix_fmt yuv420p -f v4l2 /dev/video10 &
+
+# Capture the process ID of the ffmpeg process
+FFMPEG_PID=$!
+
+echo "Virtual webcam is running on /dev/video10 with 1024x768 resolution and text overlay. Press any key to stop."
+
+# Wait for any keypress to stop the script
+read -n 1 -s
+
+# Stop ffmpeg and unmount the virtual camera
+echo "Stopping virtual webcam..."
+kill $FFMPEG_PID
+
+# Remove the v4l2loopback module to "disconnect" the virtual webcam
+sudo modprobe -r v4l2loopback
+
+# Clean up resized image
+rm "$RESIZED_IMAGE_PATH"
+
+echo "Virtual webcam has been disconnected."
